@@ -1,5 +1,12 @@
 # -*- coding: utf-8 -*-
 """
+NOTE: if a ValueError: need more than 0 values to unpack appears:
+
+cd Desktop
+cd DirectoryWithImages
+ls -a #if a '.DS_Store' file, or somehting similar is present...
+rm .DS_Store
+
 Created on Sat Jan 24 17:08:05 2015
 
 @author: Dan
@@ -14,8 +21,8 @@ from scipy import stats
 #=============================================================================
 # Generate Image Process Data
 #=============================================================================
-ALDHpositive = nc.NCID(directory='/Users/Dan/Desktop/ALDH+RGB/', write2File=False)
-ALDHnegative = nc.NCID(directory='/Users/Dan/Desktop/ALDH-RGB/', write2File=False)
+ALDHpositive = nc.NCID(directory='/Users/Dan/Desktop/ALDH+RGB/', write2File=True)
+ALDHnegative = nc.NCID(directory='/Users/Dan/Desktop/ALDH-RGB/', write2File=True)
 
 #=============================================================================
 # Fit Data to Normal Distribution
