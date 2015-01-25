@@ -37,7 +37,7 @@ class NCID(object):
             spamwriter.writerow([';Total Cells = %s' %len(self.cells)])
             spamwriter.writerow([';NOTE: Effective nuclear and cytoplasmic radii are calculated by R_eff = sqrt(majAxis*minAxis).'])
             spamwriter.writerow([';      Volume was calculated by 4/3*pi*R_eff^3 and N/C ratio given by NC = Vnuc/Vcyto.'])
-            spamwriter.writerow([';centerCytoX,centerCytoY,majCytoAxis,minCytoAxis,tiltCytoAngle,centerNucX,centerNucY,majNucAxis,minNucAxis,tiltNucAngle,NCRatio,Scale,imageID'])
+            spamwriter.writerow([';cellNo,centerCytoX,centerCytoY,majCytoAxis,minCytoAxis,tiltCytoAngle,centerNucX,centerNucY,majNucAxis,minNucAxis,tiltNucAngle,NCRatio,Scale,imageID'])
             for i in self.cells:
                 spamwriter.writerow([self.cells.index(i), i[0][0][0][0], i[0][0][0][1], i[0][0][1][0], i[0][0][1][1], i[0][0][2],
                                      i[0][1][0][0], i[0][1][0][1], i[0][1][1][0], i[0][1][1][1], i[0][1][2],
