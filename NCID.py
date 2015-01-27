@@ -11,22 +11,58 @@ import numpy as np
 import csv
 
 class NCID(object):
-    def __init__(self, directory='/Users/Dan/Desktop/ALDH+RGB/', write2File=False, TOLERANCE=50):
+    def __init__(self, root_directory='/Users/Dan/Desktop/ALDH+/', write2File=False, TOLERANCE=50):
+        self.directory = root_directory + 'RGB/'
         self.TOLERANCE = TOLERANCE
-        self.SCALE = 1
+        self.units = {'cm': 1e-2, 'mm': 1e-3, 'µm': 1e-6}
+        self.SCALE = self.getScaleDict(root_directory)
         self.cellsByImage = []
         self.cells = []
-        self.file_list = self.getFilenames(directory)
+        self.file_list = self.getFilenames(self.directory)
         for i in self.file_list:
-            cellsInImage = self.findCells(directory+i)
+            cellsInImage = self.findCells(self.directory+i)
             self.cellsByImage.append(cellsInImage)
             for cell in cellsInImage:
                 self.cells.append([cell, i])
                 print str(i) + ' %s/%s cells' %(cellsInImage.index(cell)+1, len(cellsInImage))
         if write2File == True:
-            self.genDataFile(directory)
+            self.genDataFile(self.directory)
+            
+    def getScaleDict(self, directory='/Users/Dan/Desktop/ALDH+/'):
+        a = np.array(self.getFilenames(directory))
+        types = [i.split('.')[-1] for i in a]
+        data_filelist = []
+        scale = {}
+        for i in range(len(types)):
+            if types[i] == 'xml' and a[i].endswith('Properties.xml'):
+                scale['%s'%(a[i].split('_')[0]+'_RGB.tif')] = self.getScale(directory+a[i])
+                data_filelist.append(a[i])
+        return scale
+        
+    def getScale(self, path):
+        f = open(path)
+        fline = f.readlines()
+        f.close()
+        for line in fline:
+            if 'DimID="X"' in line:
+                xNoE = float(line.split('NumberOfElements=')[-1].split('"')[1])
+                xLength = float(line.split('Length=')[-1].split('"')[1])
+                xUnits = self.units[line.split('Unit=')[-2].split('"')[1]]
+                xCalLength = xLength*xUnits
+                xScale = float(xCalLength)/float(xNoE)
+                
+#            if 'DimID="Y"' in line:
+#                yNoE = float(line.split('NumberOfElements=')[-1].split('"')[1])
+#                yLength = float(line.split('Length=')[-1].split('"')[1])
+#                yUnits = line.split('Units=')[-1].split('"')[1]
+#                yCalLength = yLength*self.units[yUnits]
+#                yScale = float(yCalLength)/float(yNoE)
+            
+        return xScale
 
     def genDataFile(self, directory, delimiter=','):
+        if 'cellData.csv' in self.getFilenames(directory):
+            os.remove(directory + 'cellData.csv')
         with open(directory + 'cellData.csv', 'wb') as csvfile:
             spamwriter = csv.writer(csvfile, delimiter=delimiter,
                                     quotechar=';', quoting=csv.QUOTE_MINIMAL)
@@ -37,28 +73,31 @@ class NCID(object):
             spamwriter.writerow([';Total Cells = %s' %len(self.cells)])
             spamwriter.writerow([';NOTE: Effective nuclear and cytoplasmic radii are calculated by R_eff = sqrt(majAxis*minAxis).'])
             spamwriter.writerow([';      Volume was calculated by 4/3*pi*R_eff^3 and N/C ratio given by NC = Vnuc/Vcyto.'])
-            spamwriter.writerow([';cellNo,centerCytoX,centerCytoY,majCytoAxis,minCytoAxis,tiltCytoAngle,centerNucX,centerNucY,majNucAxis,minNucAxis,tiltNucAngle,NCRatio,Scale,imageID'])
+            spamwriter.writerow([';cellNo,centerCytoX,centerCytoY,majCytoAxis,minCytoAxis,tiltCytoAngle,centerNucX,centerNucY,majNucAxis,minNucAxis,tiltNucAngle,NCRatio,xScale,Reff,Veff,imageID'])
             for i in self.cells:
                 spamwriter.writerow([self.cells.index(i), i[0][0][0][0], i[0][0][0][1], i[0][0][1][0], i[0][0][1][1], i[0][0][2],
                                      i[0][1][0][0], i[0][1][0][1], i[0][1][1][0], i[0][1][1][1], i[0][1][2],
-                                     i[0][2], i[0][3], i[1]])
+                                     i[0][2], self.SCALE[i[1]], i[0][4], i[0][5], i[1]])
         csvfile.close()
         return True
     
 
     def getFilenames(self, directory):
         file_list = [i for i in os.listdir(directory) if os.path.isfile(os.path.join(directory, i))]
+        if '.DS_Store' in file_list:
+            os.remove(directory+'/.DS_Store')
         return file_list
         
     def findCells(self, filename, show = False):
         img = cv2.imread(filename)
+        name = filename.split('/')[-1]
         blue, green, red = cv2.split(img)
         cyto_ellipses = self.rmDuplicates(self.getEllipses(green))
         nuc_ellipses = self.rmDuplicates(self.getEllipses(blue))
-        matches = self.matchNuc2Cyto(cyto_ellipses, nuc_ellipses)
+        matches = self.matchNuc2Cyto(cyto_ellipses, nuc_ellipses, self.SCALE[name])
         return matches
         
-    def matchNuc2Cyto(self, cyto_ellipses, nuc_ellipses):
+    def matchNuc2Cyto(self, cyto_ellipses, nuc_ellipses, scale):
         matches = []
         matched_cyto = []
         matched_nuc = []
@@ -66,20 +105,46 @@ class NCID(object):
         for i in range(len(cyto_ellipses)):
             for j in range(len(nuc_ellipses)):
                 if self.getDist(cyto_ellipses[i], nuc_ellipses[j]) < self.TOLERANCE:
-                    matches.append([cyto_ellipses[i], nuc_ellipses[j], self.getNCRatio(cyto_ellipses[i], nuc_ellipses[j]), self.SCALE])
+                    matches.append([cyto_ellipses[i], nuc_ellipses[j], 
+                                    self.getNCRatio(cyto_ellipses[i], nuc_ellipses[j], scale), 
+                                    scale, 
+                                    self.getReff(cyto_ellipses[i], scale), 
+                                    self.getVeff(cyto_ellipses[i], scale)])
                     matched_cyto.append(i)
                     matched_nuc.append(j)
         if len(cyto_ellipses) > len(matches):
             for i in range(len(cyto_ellipses)):
                 if i not in matched_cyto:
-                    matches.append([cyto_ellipses[i], blank_ellipse, 0., self.SCALE])
+                    matches.append([cyto_ellipses[i], blank_ellipse, 
+                                    0., 
+                                    scale,
+                                    self.getReff(cyto_ellipses[i], scale), 
+                                    self.getVeff(cyto_ellipses[i], scale)])
         return matches
+        
+    def getReff(self, ellipse, scale):
+        Rmaj = ellipse[1][1] * scale/2
+        Rmin = ellipse[1][0] * scale/2
+        Reff = np.sqrt(Rmaj*Rmin)
+        return Reff
+        
+    def getVeff(self, ellipse, scale):
+        Rmaj = ellipse[1][1] * scale/2
+        Rmin = ellipse[1][0] * scale/2
+        Veff = (np.sqrt(Rmaj*Rmin))**3 * 4./3. * np.pi
+        return Veff
     
-    def getNCRatio(self, cytoplasm, nucleus):
-        cytoplasm_radius = float(np.sqrt(np.product(cytoplasm[1])))
-        nuclear_radius = float(np.sqrt(np.product(nucleus[1])))
+    def getNCRatio(self, cytoplasm, nucleus, scale):
+        Rmaj_cyto = cytoplasm[1][1] * scale/2
+        Rmin_cyto = cytoplasm[1][0] * scale/2
+        cytoplasm_radius = float(np.sqrt(Rmaj_cyto * Rmin_cyto))
         cyto_eff_sphere = 4./3.*np.pi*cytoplasm_radius**3
+        
+        Rmaj_nuc = nucleus[1][1] * scale/2
+        Rmin_nuc = nucleus[1][0] * scale/2
+        nuclear_radius = float(np.sqrt(Rmaj_nuc * Rmin_nuc))
         nuc_eff_sphere = 4./3.*np.pi*nuclear_radius**3
+        
         NCRatio = nuc_eff_sphere / cyto_eff_sphere 
         return NCRatio
         
